@@ -94,7 +94,12 @@ extension APIRequest {
 
         let data: Data
         do {
-            data = try await send(uRLRequest: uRLRequest, with: provider.session)
+            if provider.url.absoluteString.contains("wss") || provider.url.absoluteString.contains("ws") {
+                data = try await sendWebsocket(webSocketTask: provider.websocketTask, message: body.encodedBody)
+            } else {
+                data = try await sendHttpRequest(uRLRequest: uRLRequest, with: provider.session)
+            }
+
         } catch Web3Error.rpcError(let error) {
             let responseAsString = try checkError(method: method, error: error)
             guard let LiteralType = Result.self as? LiteralInitiableFromString.Type,
@@ -117,7 +122,46 @@ extension APIRequest {
         return try JSONDecoder().decode(APIResponse<Result>.self, from: data)
     }
 
-    public static func send(uRLRequest: URLRequest, with session: URLSession) async throws -> Data {
+    public static func sendWebsocket(webSocketTask: URLSessionWebSocketTask?, message: Data) async throws -> Data {
+
+        var returnData = Data()
+        do {
+            try await webSocketTask?.send(.data(message))
+            guard let message: URLSessionWebSocketTask.Message? = try await webSocketTask?.receive() else { throw Web3Error.serverError(code: 404) }
+
+            switch message {
+            case .data(let data):
+                returnData = data
+            case .string(let string):
+                returnData = string.data(using: .utf8) ?? Data()
+            case .none:
+                fatalError()
+            @unknown default:
+                fatalError()
+            }
+
+            if let error = JsonRpcErrorObject.init(from: returnData)?.error {
+                guard let parsedErrorCode = error.parsedErrorCode else {
+                    throw Web3Error.rpcError(error)
+                }
+                let description = "\(parsedErrorCode.errorName). Error code: \(error.code). \(error.message)"
+                switch parsedErrorCode {
+                case .parseError, .invalidParams:
+                    throw Web3Error.inputError(desc: description)
+                case .methodNotFound, .invalidRequest:
+                    throw Web3Error.processingError(desc: description)
+                case .internalError, .serverError:
+                    throw Web3Error.nodeError(desc: description)
+                }
+            }
+        } catch {
+            throw Web3Error.serverError(code: 404)
+        }
+
+        return returnData
+    }
+
+    public static func sendHttpRequest(uRLRequest: URLRequest, with session: URLSession) async throws -> Data {
         let (data, response) = try await session.data(for: uRLRequest)
 
         guard 200 ..< 400 ~= response.statusCode else {

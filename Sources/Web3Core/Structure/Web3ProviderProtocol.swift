@@ -13,4 +13,5 @@ public protocol Web3Provider {
     var policies: Policies {get set}
     var url: URL {get}
     var session: URLSession {get}
+    var websocketTask: URLSessionWebSocketTask? { get set }
 }

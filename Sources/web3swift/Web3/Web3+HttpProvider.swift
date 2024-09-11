@@ -9,6 +9,7 @@ import Web3Core
 
 /// The default http provider.
 public class Web3HttpProvider: Web3Provider {
+    public var websocketTask: URLSessionWebSocketTask?
     public var url: URL
     public var network: Networks?
     public var policies: Policies = .auto
@@ -56,5 +57,61 @@ public class Web3HttpProvider: Web3Provider {
         self.url = url
         self.network = network
         self.attachedKeystoreManager = keystoreManager
+    }
+}
+
+
+public class Web3WebsocketProvider: NSObject, Web3Provider, URLSessionWebSocketDelegate {    
+    public var url: URL
+    public var network: Networks?
+    public var policies: Policies = .auto
+    public var attachedKeystoreManager: KeystoreManager?
+    public var session: URLSession = {() -> URLSession in
+        let config = URLSessionConfiguration.default
+        let urlSession = URLSession(configuration: config)
+        return urlSession
+    }()
+    public var websocketTask: URLSessionWebSocketTask?
+
+
+    public init(url: URL, network net: Networks?, keystoreManager manager: KeystoreManager? = nil) async throws {
+        guard url.scheme == "wss" || url.scheme == "ws" else {
+            throw Web3Error.inputError(desc: "Web3HttpProvider endpoint must have scheme wss or ws. Given scheme \(url.scheme ?? "none"). \(url.absoluteString)")
+        }
+
+        self.url = url
+        websocketTask = session.webSocketTask(with: url)
+        websocketTask?.resume()
+        super.init()
+        if let net = net {
+            network = net
+        } else {
+            /// chain id could be a hex string or an int value.
+            let response: String = try await APIRequest.send(APIRequest.getNetwork.call, parameters: [], with: self).result
+            let result: UInt
+            if response.hasHexPrefix() {
+                guard let num = BigUInt(response, radix: 16)  else {
+                    throw Web3Error.processingError(desc: "Get network succeeded but can't be parsed to a valid chain id.")
+                }
+                result = UInt(num)
+            } else {
+                guard let num = UInt(response) else {
+                    throw Web3Error.processingError(desc: "Get network succeeded but can't be parsed to a valid chain id.")
+                }
+                result = num
+            }
+            self.network = Networks.fromInt(result)
+        }
+        attachedKeystoreManager = manager
+    }
+
+    public init(url: URL, network: Networks, keystoreManager: KeystoreManager? = nil) {
+        self.url = url
+        self.network = network
+        self.attachedKeystoreManager = keystoreManager
+    }
+
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        print("Did connected websocket")
     }
 }

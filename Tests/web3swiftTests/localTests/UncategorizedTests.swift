@@ -155,4 +155,12 @@ class UncategorizedTests: LocalTestCase {
             }
         }
     }
+
+    func testWebSocket() async throws {
+        let web3 = try await Web3(provider: Web3WebsocketProvider(url: URL(string: "wss://rpc-tanenbaum.rollux.com/wss/")!, network: .Custom(networkID: BigUInt(57000))))
+        let balance = try await web3.eth.getBalance(for: EthereumAddress(_address: "0x5d564c9b7cb776190c9acf2c1df88b14627e7cd7"))
+        let gasPrice = try await web3.eth.gasPrice()
+        let s: APIResponse<String> = try await APIRequest.sendRequest(with: web3.provider, for: APIRequest.getNetwork)
+        XCTAssertNotNil(balance)
+    }
 }

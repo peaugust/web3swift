@@ -9,11 +9,11 @@ import web3swift
 // while this class does show up in the navigator, it has no associated tests
 class LocalTestCase: XCTestCase {
 
-    static let url = URL(string: "http://127.0.0.1:8545")!
+    static let url = URL(string: "wss://rpc-tanenbaum.rollux.com/wss/")!
     static let keyStoreManager: KeystoreManager = KeystoreManager([try! EthereumKeystoreV3(password: "web3swift")!])
 
     override func setUp() async throws {
-        let web3 = try! await Web3.new(LocalTestCase.url)
+        let web3 = try! await Web3(provider: Web3WebsocketProvider(url: URL(string: "wss://rpc-tanenbaum.rollux.com/wss/")!, network: .Custom(networkID: BigUInt(57000))))
 
         let block = try await web3.eth.blockNumber()
         guard block < 25 else { return }
